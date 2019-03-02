@@ -1,0 +1,1 @@
+g++ -o bin/infer tensorflow/Tacotron2/infer.cc -std=c++11 -L /home/potato/tensorflow/bazel-bin/tensorflow/ -ltensorflow_cc -ltensorflow_framework -I /home/potato/tensorflow/third_party/gperftools-master/src/
