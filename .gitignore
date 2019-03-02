@@ -41,8 +41,4 @@ local.properties
 gradleBuild
 
 ./tensorflow/contrib/makefile/proto_text_cc_files.txt
-tensorflow/contrib/makefile/proto_text_pb_cc_files.txt
-tensorflow/contrib/makefile/proto_text_pb_h_files.txt
-tensorflow/contrib/makefile/tf_pb_text_files.txt
-tensorflow/contrib/makefile/tf_proto_files.txt
-
+third_party/gperftools-master/
