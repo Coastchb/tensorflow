@@ -424,6 +424,7 @@ Status DirectSession::Run(const NamedTensorList& inputs,
                           const std::vector<string>& output_names,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs) {
+  LOG(INFO) << "enter DirectSeesion::Run()";
   RunMetadata run_metadata;
   return Run(RunOptions(), inputs, output_names, target_nodes, outputs,
              &run_metadata);
@@ -731,10 +732,14 @@ Status DirectSession::Run(const RunOptions& run_options,
                           const std::vector<string>& target_nodes,
                           std::vector<Tensor>* outputs,
                           RunMetadata* run_metadata) {
+  std::chrono::duration<double, std::milli> elapsed;
+  auto time0 = std::chrono::high_resolution_clock::now();
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("Run()"));
   direct_session_runs->GetCell()->IncrementBy(1);
-
+  auto time1 = std::chrono::high_resolution_clock::now();
+  elapsed = time1 - time0;
+  std::cout << "run0 consumed: " << elapsed.count() << "ms" << std::endl;
   // Extract the inputs names for this run of the session.
   std::vector<string> input_tensor_names;
   input_tensor_names.reserve(inputs.size());
@@ -742,11 +747,19 @@ Status DirectSession::Run(const RunOptions& run_options,
     input_tensor_names.push_back(it.first);
   }
 
+  auto time2 = std::chrono::high_resolution_clock::now();
+  elapsed = time2 - time1;
+  std::cout << "run1 consumed: " << elapsed.count() << "ms" << std::endl;
+
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args(run_options.debug_options());
   run_state_args.collective_graph_key =
       run_options.experimental().collective_graph_key();
+
+  auto time2_1 = std::chrono::high_resolution_clock::now();
+  elapsed = time2_1 - time2;
+  std::cout << "run2_1 consumed: " << elapsed.count() << "ms" << std::endl;
 
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
                                           target_nodes, &executors_and_keys,
@@ -755,6 +768,10 @@ Status DirectSession::Run(const RunOptions& run_options,
     mutex_lock l(collective_graph_key_lock_);
     collective_graph_key_ = executors_and_keys->collective_graph_key;
   }
+
+  auto time3 = std::chrono::high_resolution_clock::now();
+  elapsed = time3 - time2_1;
+  std::cout << "run2 consumed: " << elapsed.count() << "ms" << std::endl;
 
   // Configure a call frame for the step, which we use to feed and
   // fetch values to and from the executors.
@@ -772,6 +789,11 @@ Status DirectSession::Run(const RunOptions& run_options,
       feed_args[executors_and_keys->input_name_to_index[it.first]] = it.second;
     }
   }
+
+  auto time4 = std::chrono::high_resolution_clock::now();
+  elapsed = time4 - time3;
+  std::cout << "run3 consumed: " << elapsed.count() << "ms" << std::endl;
+
   const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
     return errors::InvalidArgument(s.error_message());
@@ -787,6 +809,10 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   TF_RETURN_IF_ERROR(RunInternal(step_id, run_options, &call_frame,
                                  executors_and_keys, run_metadata));
+
+  auto time5 = std::chrono::high_resolution_clock::now();
+  elapsed = time5 - time4;
+  std::cout << "run4 consumed: " << elapsed.count() << "ms" << std::endl;
 
   // Receive outputs.
   if (outputs) {
@@ -814,6 +840,11 @@ Status DirectSession::Run(const RunOptions& run_options,
         }
       }
     }
+
+    auto time6 = std::chrono::high_resolution_clock::now();
+    elapsed = time6 - time5;
+    std::cout << "run5 consumed: " << elapsed.count() << "ms" << std::endl;
+
     outputs->clear();
     outputs->reserve(sorted_outputs.size());
     for (int i = 0; i < output_names.size(); ++i) {
@@ -826,8 +857,10 @@ Status DirectSession::Run(const RunOptions& run_options,
         outputs->push_back((*outputs)[first_indices[i]]);
       }
     }
+    auto time7 = std::chrono::high_resolution_clock::now();
+    elapsed = time7 - time6;
+    std::cout << "run6 consumed: " << elapsed.count() << "ms" << std::endl;
   }
-
   return Status::OK();
 }
 

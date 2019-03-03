@@ -85,7 +85,7 @@ http://www.cnblogs.com/hrlnw/p/7383951.html
 （a）头文件没找到问题，很可能是没有安装依赖工具，或者没有添加INCLUDE位置；
 
 （b）未定义的引用：https://github.com/tensorflow/tensorflow/issues/14632
-g++ -o infer tensorflow/Tacotron2/infer.cc -std=c++11 -L bazel-bin/tensorflow/ -ltensorflow_cc -ltensorflow_framework
+g++ -o infer tensorflow/Tacotron2/infer.cc -std=c++11 -L bazel-bin/tensorflow/ -ltensorflow_cc -ltensorflow_framework (注意两个动态库的引用顺序不能变）
 
 ## Contribution guidelines
 
