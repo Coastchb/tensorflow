@@ -6,6 +6,7 @@
 #include <chrono>
 #include <math.h>
 #include <stdio.h>
+#include <string>
 
 #include "../LPCNet/src/arch.h"
 #include "../LPCNet/src/lpcnet.h"
@@ -21,6 +22,8 @@
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "gperftools/profiler.h"
+
+//#include "tensorflow/Tacotron2/include/preprocess.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
@@ -67,7 +70,7 @@ int synthesize(int num_frames, float infeat_matrix[][ACT_DIM], std::string out_f
 
     fout = fopen(out_file.c_str(), "wb");
     if (fout == NULL) {
-        fprintf(stderr, "Can't open %s\n", out_file);
+        fprintf(stderr, "Can't open %s\n", out_file.c_str());
         exit(1);
     }
 
@@ -99,9 +102,11 @@ int main(int argc, char* argv[]) {
     std::chrono::duration<double, std::milli> elapsed;
     auto time1 = std::chrono::high_resolution_clock::now();
     string graph = "";
+    string input_file = "";
     bool verbose = false;
     std::vector<Flag> flag_list = {
         Flag("graph", &graph, "model to be executed"),
+        //Flag("input_file", &input_file, "testdata/short_news.txt", "input file containing text to be synthesized"),
         Flag("verbose", &verbose, "whether to log extra debugging information"),
     };
     string usage = tensorflow::Flags::Usage(argv[0], flag_list);
@@ -118,6 +123,11 @@ int main(int argc, char* argv[]) {
     std::cout << graph << std::endl;
 
     ProfilerStart("test.prof");//开启性能分析
+
+    // read and preprocess text
+    //std::vector<std::string> text;
+    //read_text(input_file, &text);
+    //preprocess_text(&text);
 
     // First we load and initialize the model.
     std::unique_ptr<tensorflow::Session> session;
