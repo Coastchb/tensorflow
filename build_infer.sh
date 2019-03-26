@@ -1,1 +1,3 @@
 g++ -o bin/infer tensorflow/Tacotron2/infer.cc -std=c++11 -I /home/potato/LPCNet/src -L /home/potato/tensorflow/bazel-bin/tensorflow/  -ltensorflow_cc -ltensorflow_framework  -L /home/potato/tensorflow/third_party/gperftools-master/.libs/ -lprofiler -L /home/potato/LPCNet -l lpc
+
+ g++ -o bin/preprocess_test tensorflow/Tacotron2/preprocess_test.cc tensorflow/Tacotron2/utils/preprocess.cc tensorflow/Tacotron2/utils/string_utils.cc -std=c++11 -L /home/coast/Desktop/tensorflow/tensorflow/Tacotron2/libs/crfpp/ -l crfpp  -I .
