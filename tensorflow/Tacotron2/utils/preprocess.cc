@@ -1,9 +1,10 @@
 #include "tensorflow/Tacotron2/utils/preprocess.h"
+#include "tensorflow/Tacotron2/include/crfpp/crfpp.h"
 
 namespace explorer {
 
-    void get_sentences(string& text, vector<string>* sentences) {
-        split_text_to_sentence(text, true, sentences);
+    bool get_sentences(string& text, vector<string>* sentences) {
+        return split_text_to_sentence(text, true, sentences);
     }
 
     bool segment_pos(const string& sentence, char result[]) {
@@ -63,6 +64,7 @@ namespace explorer {
             int word_len = int(line_vector.at(0).size() / 3);
             out->push_back(line_vector.at(0) + "\t" + to_string(word_len) + "\t" + line_vector.at(1));
         }
+        return true;
     }
 
     // TODO 1: implement this function
@@ -85,6 +87,7 @@ namespace explorer {
             cout << "error while opening file:" << filename << endl;
             return false;
         }
+        return true;
     }
 
     bool is_intonation_label(string& w) {
@@ -100,6 +103,11 @@ namespace explorer {
 
     bool gen_final_input(vector<string>* prosody_output, map<string, vector<int>>* dict, vector<int>* final_input) {
         // convert word to phone ids, with prosody merged
+        cout << "****";
+        for(auto& x: (*dict)[SIL])
+            cout << x << endl;
+        cout << "****";
+        final_input->insert(final_input->end(), (*dict)[SIL].begin(), (*dict)[SIL].end());
         for (vector<string>::iterator it = prosody_output->begin();
                 it != prosody_output->end(); it++) {
 
@@ -120,6 +128,7 @@ namespace explorer {
             final_input->insert(final_input->end(), (*dict)[word].begin(), (*dict)[word].end());
 
             string prosody_label = "";
+
             if(pause == "1")
                 prosody_label = LAB_PROSODY_WORD;
             else if(pause == "2")
@@ -127,10 +136,13 @@ namespace explorer {
             else if(pause == "3")
                 prosody_label = LAB_INTONATION_PHRASE;
             else if(pause == "4")
-                prosody_label = LAB_EOS;
-            else
+                prosody_label = LAB_SENTENCE;
+            else{
                 //LOG(ERROR) << "unsupported pasue level:" << pause;
                 cout << "unsupported pasue level:" << pause << endl;
+                continue;
+            }
+
 
             // TODO 4: look backward 1 word and determine current prosody (DONE)
             if( it != (prosody_output->end() - 1)) {
@@ -147,7 +159,38 @@ namespace explorer {
             final_input->insert(final_input->end(), (*dict)[prosody_label].begin(), (*dict)[prosody_label].end());
 
         }
+        final_input->insert(final_input->end(), (*dict)[SIL].begin(), (*dict)[SIL].end());
+        final_input->insert(final_input->end(), (*dict)[LAB_EOS].begin(), (*dict)[LAB_EOS].end());
         return true;
     }
 
+    // preprocess a sentence
+    bool preprocess(map<string, vector<int>>& dict, const string& sentence, vector<int>* input_ids) {
+        // step 1: segment and POS
+        char str_ret[2048 * 4] = "";
+        vector <string> pos_ret;
+        if(! (segment_pos(sentence, str_ret) && extract_pos(str_ret, &pos_ret))) {
+            cerr << "error while getting POS" << endl;
+            return false;
+        }
+
+        // step 2: prepare feat for prosody prediction
+        vector <string> feat_vec;
+        if(! gen_prosody_feat(&pos_ret, &feat_vec)) {
+            cerr << "error while getting prosody feat" << endl;
+            return false;
+        }
+
+        // step 3: predict prosody
+        vector <string> prosody_output_vec;
+        crfpp_test1(prosody_model_file, &feat_vec, &prosody_output_vec);
+
+        // step 4: convert words to pronunciations (phone ids)
+        //         and merge prosody
+         if(!gen_final_input(&prosody_output_vec, &dict, input_ids)) {
+             cerr << "error while getting final ids";
+             return false;
+         }
+         return true;
+    }
 }

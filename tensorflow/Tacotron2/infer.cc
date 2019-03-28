@@ -8,9 +8,9 @@
 #include <stdio.h>
 #include <string>
 
-#include "../LPCNet/src/arch.h"
-#include "../LPCNet/src/lpcnet.h"
-#include "../LPCNet/src/freq.h"
+#include "tensorflow/Tacotron2/include/lpcnet/arch.h"
+#include "tensorflow/Tacotron2/include/lpcnet/lpcnet.h"
+#include "tensorflow/Tacotron2/include/lpcnet/freq.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -23,7 +23,9 @@
 #include "tensorflow/core/util/command_line_flags.h"
 #include "gperftools/profiler.h"
 
-//#include "tensorflow/Tacotron2/include/preprocess.h"
+#include "tensorflow/Tacotron2/utils/preprocess.h"
+#include "tensorflow/Tacotron2/utils/file_utils.h"
+#include "tensorflow/Tacotron2/utils/string_utils.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
@@ -60,24 +62,32 @@ Status LoadGraph(const string& graph_file_name,
     return Status::OK();
 }
 
+template <typename Word>
+bool write_word(std::ostream& outs, Word value, unsigned size = sizeof(Word))
+{
+    for (; size; --size, value >>= 8)
+        outs.put(static_cast <char> (value & 0xFF));
+    return true;
+}
 
-int synthesize(int num_frames, float infeat_matrix[][ACT_DIM], std::string out_file="out.pcm") {
-    auto syn_start = std::chrono::high_resolution_clock::now();
-
-    FILE *fout;
+bool synthesize(int num_frames, float infeat_matrix[][ACT_DIM], std::string& wav_file) {
     LPCNetState *net;
     net = lpcnet_create();
 
-    fout = fopen(out_file.c_str(), "wb");
-    if (fout == NULL) {
-        fprintf(stderr, "Can't open %s\n", out_file.c_str());
-        exit(1);
-    }
+    ofstream fw(wav_file, ios::binary );
+    // Write the file headers
+    fw << "RIFF----WAVEfmt ";     // (chunk size to be filled in later)
+    write_word( fw,     16, 4 );  // no extension data
+    write_word( fw,      1, 2 );  // PCM - integer samples
+    write_word( fw,      1, 2 );  // two channels (stereo file)
+    write_word( fw,  16000, 4 );  // samples per second (Hz)
+    write_word( fw,  64000, 4 );  // (Sample Rate * BitsPerSample * Channels) / 8
+    write_word( fw,      4, 2 );  // data block size (size of two integer samples, one for each channel, in bytes)
+    write_word( fw,     16, 2 );  // number of bits per sample (use a multiple of 8)
 
-    std::chrono::duration<double, std::milli> elapsed;
-    auto time1 = std::chrono::high_resolution_clock::now();
-    elapsed = time1 - syn_start;
-    std::cout << "syn1 consumed: " << elapsed.count() << "ms" << std::endl;
+    // Write the data chunk header
+    size_t data_chunk_pos = fw.tellp();
+    fw << "data----";  // (chunk size to be filled in later)
 
     for (int i = 0; i < num_frames; i++){
 
@@ -88,14 +98,90 @@ int synthesize(int num_frames, float infeat_matrix[][ACT_DIM], std::string out_f
         memcpy(&features[36], &infeat_matrix[i][18], 2* sizeof(*features));
 
         lpcnet_synthesize(net, pcm, features, FRAME_SIZE);
-        fwrite(pcm, sizeof(pcm[0]), FRAME_SIZE, fout);
-
+        for(auto& x: pcm) {
+            write_word(fw, x, 2);
+        }
     }
-    auto time2 = std::chrono::high_resolution_clock::now();
-    elapsed = time2 - time1;
-    std::cout << "syn2 consumed: " << elapsed.count() << "ms" << std::endl;
-    fclose(fout);
+    // (We'll need the final file size to fix the chunk sizes above)
+    size_t file_length = fw.tellp();
+
+    // Fix the data chunk header to contain the data size
+    fw.seekp( data_chunk_pos + 4 );
+    write_word( fw, file_length - data_chunk_pos + 8 );
+
+    // Fix the file header to contain the proper RIFF chunk size, which is (file size - 8) bytes
+    fw.seekp( 0 + 4 );
+    write_word( fw, file_length - 8, 4 );
+    fw.close();
     lpcnet_destroy(net);
+    return true;
+}
+
+bool synthesize_sentence(const string& sentence, std::unique_ptr<tensorflow::Session>& sess,
+                         map<string, vector<int>>& dict, int sentence_index) {
+    std::vector<int> sentence_input;
+
+    if (!explorer::preprocess(dict, sentence, &sentence_input)) {
+        LOG(ERROR) << "error while preprocessing";
+        return false;
+    }
+
+    std::cout << "final input for sentence:\"" << sentence << "\"\n";
+    for(auto& x: sentence_input){
+        std::cout << x << " ";
+    }
+    std::cout << std::endl;
+
+    int input_len = sentence_input.size();
+    std::vector<int32> text_length({input_len});
+    std::vector<int32> split_infos({{input_len}});
+    Tensor text_tensor(tensorflow::DT_INT32,
+                       tensorflow::TensorShape({1, input_len}));
+    Tensor length_tensor(tensorflow::DT_INT32,
+                         tensorflow::TensorShape({1}));
+    Tensor split_tensor(tensorflow::DT_INT32,
+                        tensorflow::TensorShape({1,1}));
+
+
+    std::copy(sentence_input.begin(), sentence_input.end(), text_tensor.flat<int32>().data());
+    std::copy(text_length.begin(), text_length.end(), length_tensor.flat<int32>().data());
+    std::copy(split_infos.begin(), split_infos.end(), split_tensor.flat<int32>().data());
+
+    // Do inference.
+    std::vector<Tensor> outputs;
+    Status run_status = sess->Run({{"Tacotron_model/text:0", text_tensor},
+                                      {"Tacotron_model/text_len:0", length_tensor},
+                                      {"Tacotron_model/split_infos", split_tensor}},
+                                     {"Tacotron_model/mel_outputs"}, {}, &outputs);
+
+    if (!run_status.ok()) {
+        LOG(ERROR) << "running model failed: " << run_status;
+        return false;
+    } else {
+        LOG(INFO) << "congratulate! you make it!";
+    }
+
+    Tensor output_tensor = outputs[0];
+    auto outputs_flat = output_tensor.flat<float>();
+    int output_row = output_tensor.shape().dim_size(0);
+    int output_dim = output_tensor.shape().dim_size(1);
+    float acoutic_feat[output_row][ACT_DIM];
+    if(output_dim != ACT_DIM) {
+        LOG(ERROR) << "incompatible dimension:" << output_dim <<":" << ACT_DIM;
+        return false;
+    }
+
+    for (int i = 0; i < output_row; i++) {
+        std::copy_n(outputs_flat.data() + i * output_dim, output_dim, acoutic_feat[i]);
+    }
+
+    LOG(INFO) << "start to synthesize:";
+    string pcm_file = "syn_wav/sen_" + std::to_string(sentence_index) + ".wav";
+    if (!synthesize(output_row, acoutic_feat, pcm_file)){
+        LOG(ERROR) << "error while synthesizing";
+        return false;
+    }
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -106,7 +192,7 @@ int main(int argc, char* argv[]) {
     bool verbose = false;
     std::vector<Flag> flag_list = {
         Flag("graph", &graph, "model to be executed"),
-        //Flag("input_file", &input_file, "testdata/short_news.txt", "input file containing text to be synthesized"),
+        Flag("file", &input_file, "input file containing text to be synthesized"),
         Flag("verbose", &verbose, "whether to log extra debugging information"),
     };
     string usage = tensorflow::Flags::Usage(argv[0], flag_list);
@@ -116,117 +202,50 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     if (argc > 1) {
-        LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+        LOG(ERROR) << "unknown argument " << argv[1] << "\n" << usage;
         return -1;
     }
 
-    std::cout << graph << std::endl;
-
-    ProfilerStart("test.prof");//开启性能分析
-
-    // read and preprocess text
-    //std::vector<std::string> text;
-    //read_text(input_file, &text);
-    //preprocess_text(&text);
+    //ProfilerStart("test.prof");//开启性能分析
 
     // First we load and initialize the model.
     std::unique_ptr<tensorflow::Session> session;
-
-    auto time2 = std::chrono::high_resolution_clock::now();
-    elapsed = time2 - time1;
-    std::cout << "preprocess consumed: " << elapsed.count() << "ms" << std::endl;
 
     Status load_graph_status = LoadGraph(graph, &session);
     if (!load_graph_status.ok()) {
         LOG(ERROR) << load_graph_status;
         return -1;
     } else {
-        LOG(INFO) << "Load graph successfully!\n";
+        LOG(INFO) << "load graph successfully!\n";
     }
 
-    auto time3 = std::chrono::high_resolution_clock::now();
-    elapsed = time3 - time2;
-    std::cout << "load graph consumed: " << elapsed.count() << "ms" << std::endl;
-    
-    std::vector<int32> text_input({{35, 32, 39, 39, 42, 59, 24, 42, 45, 39, 31, 54, 35, 32, 39, 39, 42,
-                                     59,  4, 42, 28, 46, 47, 61,  4, 42, 41, 34, 45, 28, 47, 48, 39, 28,
-                                     47, 36, 42, 41, 46, 54,  1}});
-    std::vector<int32> text_length({41});
-    std::vector<int32> split_infos({{41}});
-    Tensor text_tensor(tensorflow::DT_INT32,
-                             tensorflow::TensorShape({1, 41}));
-    Tensor length_tensor(tensorflow::DT_INT32,
-                         tensorflow::TensorShape({1}));
-    Tensor split_tensor(tensorflow::DT_INT32,
-                        tensorflow::TensorShape({1,1}));
-
-
-    std::copy(text_input.begin(), text_input.end(), text_tensor.flat<int32>().data());
-    std::copy(text_length.begin(), text_length.end(), length_tensor.flat<int32>().data());
-    std::copy(split_infos.begin(), split_infos.end(), split_tensor.flat<int32>().data());
-
-    auto time4 = std::chrono::high_resolution_clock::now();
-    elapsed = time4 - time3;
-    std::cout << "prepare data consumed: " << elapsed.count() << "ms" << std::endl;
-
-    // Do inference.
-    std::vector<Tensor> outputs;
-    Status run_status = session->Run({{"Tacotron_model/text:0", text_tensor},
-                                      {"Tacotron_model/text_len:0", length_tensor},
-                                      {"Tacotron_model/split_infos", split_tensor}},
-                                     {"Tacotron_model/mel_outputs"}, {}, &outputs);
-    auto time5 = std::chrono::high_resolution_clock::now();
-    elapsed = time5 - time4;
-    std::cout << "inference consumed: " << elapsed.count() << "ms" << std::endl;
-
-    if (!run_status.ok()) {
-        LOG(ERROR) << "Running model failed: " << run_status;
+    // load dict
+    map<string, vector<int>> dict;
+    if(!explorer::load_dict(explorer::dict_file, &dict)) {
+        LOG(ERROR) << "error while loading dict";
         return -1;
-    } else {
-        LOG(INFO) << "Congratulate! You make it!";
     }
 
-    Tensor output_tensor = outputs[0];
-    //std::vector<std::vector<float>> output_data;
-    auto outputs_flat = output_tensor.flat<float>();
-    int output_row = output_tensor.shape().dim_size(0);
-    int output_dim = output_tensor.shape().dim_size(1);
-    float acoutic_feat[output_row][ACT_DIM];
-    if(output_dim != ACT_DIM) {
-        LOG(INFO) << "incompatible dimension:" << output_dim <<":" << ACT_DIM;
-        exit(1);
-    }
+    // read the file
+    std::vector<std::string> text;
+    explorer::read_file(input_file, &text);
 
-    //auto outputs_matrix = output_tensor.matrix<float>();
-    //std::cout << outputs_matrix;
-    //LOG(INFO) << outputs_matrix(0);
+    int sentence_index = 0;
 
-    double mean[ACT_DIM];
-    double var[ACT_DIM];
-    FILE* fmean = fopen("mean","r");
-    FILE* fvar = fopen("var", "r");
-    fread(mean, sizeof(double), ACT_DIM, fmean);
-    fread(var, sizeof(double), ACT_DIM, fvar);
-
-
-    for (int i = 0; i < output_row; i++) {
-        //std::vector<float> output_frame;
-        //float array_frame[output_dim];
-        //output_frame.reserve(output_dim);
-        //std::copy_n(outputs_flat.data() + i * output_dim, output_dim,  // outputs_flat.data() to be removed
-        //            std::back_inserter(output_frame));
-
-        std::copy_n(outputs_flat.data() + i * output_dim, output_dim, acoutic_feat[i]);
-
-        for(int j = 0; j < ACT_DIM; j++) {
-            acoutic_feat[i][j] = acoutic_feat[i][j] * var[j] + mean[j];
+    for(auto& line: text) {
+        // step 1: split text to sentences
+        vector<string> sentences;
+        if (!explorer::get_sentences(line, &sentences)) {
+            cerr << "error while splitting text to sentences" << endl;
+            return -1;
         }
-        //output_data.emplace_back(std::move(output_frame));
+        for (auto& sentence: sentences) {
+            if(!synthesize_sentence(sentence, session, dict, sentence_index)) {
+                LOG(ERROR) << "error while synthesizing the sentence.";
+            }
+            sentence_index++;
+        }
     }
-
-    LOG(INFO) << "start to synthesize:";
-    synthesize(output_row, acoutic_feat);
-    ProfilerStop();//停止性能分析
-
+    //ProfilerStop();//停止性能分析
 }
 

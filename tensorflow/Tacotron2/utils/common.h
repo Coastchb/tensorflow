@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <fstream>
 #include <exception>
+#include <stdio.h>
+#include <stdlib.h>
 
 //#include "tensorflow/core/platform/logging.h"
 
@@ -25,6 +27,11 @@ using std::to_string;
 using std::map;
 using std::find;
 using std::ifstream;
+using std::ofstream;
+using std::fstream;
+using std::ios;
+using std::ios_base;
 using std::exception;
+using std::cerr;
 
 #endif

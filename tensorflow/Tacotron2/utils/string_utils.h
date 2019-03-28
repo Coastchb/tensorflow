@@ -1,5 +1,5 @@
-#ifndef _UTILS_H
-#define  _UTILS_H
+#ifndef _STRING_UTILS_H
+#define  _STRING_UTILS_H
 
 #include "tensorflow/Tacotron2/utils/common.h"
 
@@ -12,7 +12,9 @@ namespace explorer{
     static string LAB_PROSODY_WORD = "`";
     static string LAB_PROSODY_PHRASE = "^";
     static string LAB_INTONATION_PHRASE = ",";
-    static string LAB_EOS = ".";
+    static string LAB_SENTENCE = ".";
+    static string LAB_EOS = "~";
+    static string SIL = "SIL";
 
     bool split_text_to_vector_onece(const string&text,
                               const string& delimeter,
@@ -26,7 +28,7 @@ namespace explorer{
                               const string& delimeter,
                               bool omit_empty_strings,
                               vector<int>* out);
-    void split_text_to_sentence(const string& full,
+    bool split_text_to_sentence(const string& full,
                              bool omit_empty_strings,
                              vector<string>* out);
     bool exe_cmd(const char*,char*);

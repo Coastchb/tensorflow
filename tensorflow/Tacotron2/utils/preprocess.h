@@ -6,14 +6,16 @@
 
 namespace explorer {
     static string dict_file = "tensorflow/Tacotron2/dict/lexicon.txt";
+    static const string prosody_model_file = "models/prosody_1.model";
 
-    void get_sentences(string& text, vector<string>* sentences);
+    bool get_sentences(string&, vector<string>*);
     bool segment_pos(const string&, char []);
     bool extract_pos(char [], vector<string>*);
     bool gen_prosody_feat(vector<string>*, vector<string>*);
     bool load_dict(string&, map<string,vector<int>>*);
     bool is_intonation_label(string&);
     bool gen_final_input(vector<string>*, map<string, vector<int>>*, vector<int>*);
+    bool preprocess(map<string, vector<int>>&, const string&, vector<int>*);
 }
 
 

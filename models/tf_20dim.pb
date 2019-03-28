@@ -1,0 +1,1 @@
+../Tacotron-2/tf_20dim.pb

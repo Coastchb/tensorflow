@@ -76,7 +76,7 @@ namespace explorer{
         return true;
     }
 
-    void split_text_to_sentence(const string& full,
+    bool split_text_to_sentence(const string& full,
                              bool omit_empty_strings,
                              vector<string>* out) {
         out->clear();
@@ -104,6 +104,7 @@ namespace explorer{
                 out->push_back(full.substr(start, found - start));
             start = found + cur_delim.size();
         }
+        return true;
     }
 
     bool exe_cmd(const char* cmd,char* result) {
