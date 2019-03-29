@@ -8,7 +8,7 @@ namespace explorer {
     }
 
     bool remove_useless_symbols(string& str) {
-        for (auto& sym: explorer::USELESS_LABLES) {
+        for (auto& sym: USELESS_LABLES) {
             if(!replace_all(str, sym, ""))
                 return false;
         }
