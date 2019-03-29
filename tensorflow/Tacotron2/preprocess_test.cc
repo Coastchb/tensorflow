@@ -25,6 +25,7 @@ int main(int argc, char* argv[]) {
         if(!explorer::remove_useless_symbols(sentence)) {
             cerr << "error while removing useless symbols\n";
         }
+        cout << "sentence 1:" << sentence << endl;
 
         // step 2: segment and POS
         char str_ret[2048*4] = "";
@@ -68,6 +69,14 @@ int main(int argc, char* argv[]) {
             cout << i << "\t";
         cout << endl;
 
+    }
+
+    for(auto& x : sentences){
+        vector<int> id_input;
+        explorer::preprocess(dict, x, &id_input);
+        for(auto i: id_input)
+            cout << i << "\t";
+        cout << endl;
     }
 
     return 0;

@@ -8,7 +8,7 @@ namespace explorer {
     }
 
     bool remove_useless_symbols(string& str) {
-        for (auto& sym: explorer::USELESS_LABLES) {
+        for (auto& sym: USELESS_LABLES) {
             if(!replace_all(str, sym, ""))
                 return false;
         }
@@ -173,7 +173,11 @@ namespace explorer {
     }
 
     // preprocess a sentence
-    bool preprocess(map<string, vector<int>>& dict, const string& sentence, vector<int>* input_ids) {
+    bool preprocess(map<string, vector<int>>& dict, string& sentence, vector<int>* input_ids) {
+        // step 0: remove unused symbols
+        if(!remove_useless_symbols(sentence))
+            return false;
+
         // step 1: segment and POS
         char str_ret[2048 * 4] = "";
         vector <string> pos_ret;
