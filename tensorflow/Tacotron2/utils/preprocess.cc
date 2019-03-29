@@ -7,6 +7,14 @@ namespace explorer {
         return split_text_to_sentence(text, true, sentences);
     }
 
+    bool remove_useless_symbols(string& str) {
+        for (auto& sym: explorer::USELESS_LABLES) {
+            if(!replace_all(str, sym, ""))
+                return false;
+        }
+        return true;
+    }
+
     bool segment_pos(const string& sentence, char result[]) {
         string command = "curl -X POST \\\n"
                          "     -H \"Content-Type: application/json\" \\\n"

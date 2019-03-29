@@ -16,6 +16,7 @@ namespace explorer {
     bool is_intonation_label(string&);
     bool gen_final_input(vector<string>*, map<string, vector<int>>*, vector<int>*);
     bool preprocess(map<string, vector<int>>&, const string&, vector<int>*);
+    bool remove_useless_symbols(string&);
 }
 
 

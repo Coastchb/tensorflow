@@ -123,5 +123,15 @@ namespace explorer{
         return true;                                 //返回1表示运行成功
     }
 
+    bool replace_all(string& text, const string src_sym, const string tar_sym) {
+        size_t src_sym_len = src_sym.size(), tar_sym_len = tar_sym.size();
+        size_t found = text.find(src_sym, 0);
+        while(found != string::npos) {
+            text.replace(found, src_sym_len, tar_sym);
+            found = text.find(src_sym, found + tar_sym_len);
+        }
+        return true;
+    }
+
 
 }

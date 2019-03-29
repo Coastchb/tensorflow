@@ -8,6 +8,7 @@ namespace explorer{
 
     static string EOS_SYMBOLS[] = {"。", "！", "？", "?", "!"};
     static string INTONATION_LABLES[] = {"，", "；", "：", "——"};
+    static string USELESS_LABLES[] = {"《", "》"};
 
     static string LAB_PROSODY_WORD = "`";
     static string LAB_PROSODY_PHRASE = "^";
@@ -31,6 +32,7 @@ namespace explorer{
     bool split_text_to_sentence(const string& full,
                              bool omit_empty_strings,
                              vector<string>* out);
+    bool replace_all(string&, const string, const string);
     bool exe_cmd(const char*,char*);
 }
 
